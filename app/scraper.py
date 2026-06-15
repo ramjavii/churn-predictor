@@ -21,8 +21,6 @@ if GITHUB_TOKEN:
     HEADERS["Authorization"] = f"Bearer {GITHUB_TOKEN}"
 
 PER_PAGE = 100
-BETWEEN_USERS_DELAY = 0.8
-BETWEEN_PAGES_DELAY = 0.3
 RATE_LIMIT_SLEEP = 60
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -56,7 +54,6 @@ def _get_paginated(url: str, max_pages: int = 10) -> list[dict]:
         results.extend(data)
         if len(data) < PER_PAGE:
             break
-        time.sleep(BETWEEN_PAGES_DELAY)
     return results
 
 
@@ -96,7 +93,6 @@ def collect_seed_usernames(n: int = 300) -> list[str]:
         users.extend([u["login"] for u in batch if isinstance(u, dict) and "login" in u])
         since = batch[-1].get("id", 0) if batch else 0
         logger.info("Collected %d/%d usernames...", len(users), n)
-        time.sleep(0.5)
     return users[:n]
 
 
@@ -111,9 +107,6 @@ def collect_all_data(usernames: list[str]) -> pd.DataFrame:
         if profile is None:
             logger.debug("  -> profile not found, skipping")
             continue
-
-        if i > 0:
-            time.sleep(BETWEEN_USERS_DELAY)
 
         repos = fetch_user_repos(username)
         stars_received = sum(r.get("stargazers_count", 0) or 0 for r in repos)
