@@ -25,7 +25,6 @@ FEATURE_COLS = [
     "push_to_total_events_ratio",
     "repos_per_year",
     "days_since_last_api_activity",
-    "days_since_last_code_push",
     "average_days_between_events",
     "profile_staleness_days",
     "total_community_validation_count",
