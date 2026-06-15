@@ -5,5 +5,8 @@ services:
       - "8000:8000"
     volumes:
       - ./data:/app/data
+      - ./model.pkl:/app/model.pkl
+      - ./scaler.pkl:/app/scaler.pkl
+      - ./selected_features.json:/app/selected_features.json
     env_file:
       - .env
