@@ -100,27 +100,15 @@ def load_model():
 async def root():
     return {
         "app": "Customer Churn Predictor API",
-        "endpoints": {
-            "/health": "GET — health check",
-            "/predict": "POST — send feature JSON → get churn probability",
-            "/docs": "GET — interactive Swagger UI",
-        },
-        "usage": "POST to /predict with 20 feature values. See /docs for the full schema.",
+        "docs": "/docs",
+        "health": "/health",
+        "predict": "POST /predict — send 20 feature values, returns churned + churn_probability",
     }
 
 
 @app.get("/health")
 async def health():
     return {"status": "ok"}
-
-
-@app.get("/predict")
-async def predict_get():
-    return {
-        "error": "This endpoint requires POST, not GET.",
-        "usage": "Send a POST request with JSON body containing 20 feature values.",
-        "docs": "Visit /docs for the interactive API documentation.",
-    }
 
 
 @app.post("/predict", response_model=ChurnOutput)
