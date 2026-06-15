@@ -3,6 +3,8 @@ from pathlib import Path
 from typing import Optional
 
 import numpy as np
+
+ROOT = Path(__file__).resolve().parent.parent
 import pandas as pd
 
 from sklearn.ensemble import RandomForestClassifier
@@ -39,7 +41,9 @@ FEATURE_COLS = [
 ]
 
 
-def load_raw_data(path: str = "data/raw/github_users.csv") -> pd.DataFrame:
+def load_raw_data(path: str = None) -> pd.DataFrame:
+    if path is None:
+        path = str(ROOT / "data" / "raw" / "github_users.csv")
     df = pd.read_csv(path)
     date_cols = [
         "created_at",
@@ -386,18 +390,18 @@ def main() -> None:
         level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s"
     )
 
-    raw = load_raw_data("data/raw/github_users.csv")
+    raw = load_raw_data()
     logger.info("Loaded %d users", len(raw))
 
     features = compute_features(raw)
     churn_pct = features["churned"].mean() * 100
     logger.info("Computed %d features. Churn rate: %.1f%%", len(FEATURE_COLS), churn_pct)
 
-    Path("data/processed").mkdir(parents=True, exist_ok=True)
-    features.to_csv("data/processed/features.csv", index=False)
+    (ROOT / "data" / "processed").mkdir(parents=True, exist_ok=True)
+    features.to_csv(ROOT / "data" / "processed" / "features.csv", index=False)
 
     comparison, raw_results = select_features(features)
-    comparison.to_csv("data/processed/selection_comparison.csv", index=False)
+    comparison.to_csv(ROOT / "data" / "processed" / "selection_comparison.csv", index=False)
 
     print()
     print_variance_table(raw_results)
