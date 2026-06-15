@@ -1,10 +1,12 @@
 import logging
+import sys
 from pathlib import Path
 from typing import Optional
 
 import numpy as np
 
 ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
 import pandas as pd
 
 from sklearn.ensemble import RandomForestClassifier
@@ -37,6 +39,9 @@ FEATURE_COLS = [
     "has_invested_profile",
     "is_actively_hireable",
     "has_external_gists",
+    "degree_centrality",
+    "betweenness_centrality",
+    "pagerank",
 ]
 
 
@@ -117,6 +122,9 @@ def compute_features(
     result["has_invested_profile"] = df["has_invested_profile"].fillna(False).astype(int)
     result["is_actively_hireable"] = df["is_actively_hireable"].fillna(False).astype(int)
     result["has_external_gists"] = df["has_external_gists"].fillna(False).astype(int)
+
+    from app.network_analysis import add_network_features
+    result = add_network_features(result)
 
     result["churned"] = (result["days_since_last_code_push"] > 180).astype(int)
 

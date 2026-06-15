@@ -1,13 +1,14 @@
 [
-  "profile_staleness_days",
   "push_to_total_events_ratio",
   "distinct_event_types_count",
-  "follower_to_following_ratio",
-  "total_community_validation_count",
+  "profile_staleness_days",
   "days_since_last_api_activity",
-  "aggregate_codebase_footprint_kb",
   "average_days_between_events",
-  "total_organization_connections",
+  "pagerank",
+  "aggregate_codebase_footprint_kb",
+  "has_external_gists",
+  "degree_centrality",
   "has_no_repos",
-  "repos_per_year"
+  "total_community_validation_count",
+  "follower_to_following_ratio"
 ]

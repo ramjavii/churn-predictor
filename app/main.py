@@ -37,6 +37,9 @@ FEATURE_KEYS = [
     "has_invested_profile",
     "is_actively_hireable",
     "has_external_gists",
+    "degree_centrality",
+    "betweenness_centrality",
+    "pagerank",
 ]
 
 
@@ -61,6 +64,9 @@ class ChurnInput(BaseModel):
     has_invested_profile: float
     is_actively_hireable: float
     has_external_gists: float
+    degree_centrality: float
+    betweenness_centrality: float
+    pagerank: float
 
 
 class ChurnOutput(BaseModel):
