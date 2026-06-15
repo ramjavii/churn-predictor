@@ -194,7 +194,7 @@ def select_features(
     records = []
     for i, name in enumerate(FEATURE_COLS):
         anova_rank = np.argsort(anova_scores)[::-1].tolist().index(i) + 1
-        anova_keep = anova_rank <= 10
+        anova_keep = anova_rank <= 5
 
         consensus = sum([
             variance_kept[i],
@@ -286,10 +286,10 @@ def print_anova_table(raw: dict) -> None:
 
     print("=" * 72)
     print("TABLE 3 — Filter: ANOVA F-test (SelectKBest, f_classif)")
-    print(f"{'Rank':<6} {'Feature':<40} {'F-score':>12}  {'Top-10?':<8}")
+    print(f"{'Rank':<6} {'Feature':<40} {'F-score':>12}  {'Top-5?':<8}")
     print("-" * 72)
     for rank, i in enumerate(idx, start=1):
-        tag = "YES" if rank <= 10 else "—"
+        tag = "YES" if rank <= 5 else "—"
         print(f"{rank:<6} {names[i]:<40} {scores[i]:12.4f}  {tag:<8}")
     print("=" * 72)
     print()
