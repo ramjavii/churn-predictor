@@ -125,7 +125,7 @@ def compute_features(
 
 def select_features(
     df: pd.DataFrame, random_state: int = 42
-) -> pd.DataFrame:
+) -> tuple[pd.DataFrame, dict]:
     X = df[FEATURE_COLS].copy()
     y = df["churned"]
 
@@ -139,34 +139,44 @@ def select_features(
         scaler.fit_transform(X_train), columns=FEATURE_COLS, index=X_train.index
     )
 
+    # ---- Method 1a: Variance Threshold (on UNSCALED data) ----
     selector_var = VarianceThreshold(threshold=0.01)
-    selector_var.fit(X_train_scaled)
+    selector_var.fit(X_train)
     variance_kept = selector_var.get_support()
+    variances = selector_var.variances_
     logger.info("Variance: %d/%d features kept", sum(variance_kept), n_features)
 
+    # ---- Method 1b: Correlation Matrix ----
     corr_matrix = X_train_scaled.corr().abs()
     upper = corr_matrix.where(np.triu(np.ones(corr_matrix.shape), k=1).astype(bool))
     to_drop: set[str] = set()
+    correlated_pairs: list[tuple[str, str, float]] = []
     for col in upper.columns:
         high_corr = upper.index[upper[col] > 0.9].tolist()
         for correlated in high_corr:
             to_drop.add(correlated)
+            correlated_pairs.append((col, correlated, round(float(corr_matrix.loc[col, correlated]), 4)))
     correlation_kept = [f not in to_drop for f in FEATURE_COLS]
     logger.info("Correlation: dropped %d redundant features", len(to_drop))
 
+    # ---- Method 1c: ANOVA F-test ----
     selector_anova = SelectKBest(score_func=f_classif, k="all")
     selector_anova.fit(X_train_scaled, y_train)
     anova_scores = selector_anova.scores_
 
+    # ---- Method 2: RFE Wrapper ----
     lr = LogisticRegression(max_iter=2000, random_state=random_state)
     rfe = RFE(estimator=lr, n_features_to_select=5)
     rfe.fit(X_train_scaled, y_train)
     rfe_support = rfe.support_
+    rfe_ranking = rfe.ranking_
 
+    # ---- Method 3: Decision Tree ----
     dt = DecisionTreeClassifier(max_depth=5, random_state=random_state)
     dt.fit(X_train_scaled, y_train)
     dt_importances = dt.feature_importances_
 
+    # ---- Method 4: Random Forest ----
     rf = RandomForestClassifier(
         n_estimators=100, class_weight="balanced", random_state=random_state
     )
@@ -176,6 +186,7 @@ def select_features(
     dt_threshold = dt_importances.mean()
     rf_threshold = rf_importances.mean()
 
+    # ---- Build combined comparison ----
     records = []
     for i, name in enumerate(FEATURE_COLS):
         anova_rank = np.argsort(anova_scores)[::-1].tolist().index(i) + 1
@@ -197,13 +208,147 @@ def select_features(
             "anova_rank": anova_rank,
             "anova_f_score": round(float(anova_scores[i]), 4),
             "rfe_selected": bool(rfe_support[i]),
+            "rfe_rank": int(rfe_ranking[i]),
             "dt_importance": round(float(dt_importances[i]), 4),
             "rf_importance": round(float(rf_importances[i]), 4),
             "consensus": consensus,
         })
 
     comparison = pd.DataFrame(records).sort_values("consensus", ascending=False)
-    return comparison
+
+    raw_results = {
+        "variances": variances,
+        "variance_kept": variance_kept,
+        "corr_matrix": corr_matrix,
+        "correlated_pairs": correlated_pairs,
+        "corr_to_drop": to_drop,
+        "anova_scores": anova_scores,
+        "rfe_support": rfe_support,
+        "rfe_ranking": rfe_ranking,
+        "dt_importances": dt_importances,
+        "rf_importances": rf_importances,
+    }
+
+    return comparison, raw_results
+
+
+def print_variance_table(raw: dict) -> None:
+    """Table 1 — Variance: per-feature variance score and pass/fail."""
+    names = FEATURE_COLS
+    variances = raw["variances"]
+    kept = raw["variance_kept"]
+
+    rows = sorted(
+        zip(names, variances, kept), key=lambda x: x[1], reverse=True
+    )
+    print("=" * 70)
+    print("TABLE 1 — Filter: Variance Threshold (threshold = 0.01)")
+    print(f"{'Feature':<40} {'Variance':>12}  {'Result':<6}")
+    print("-" * 70)
+    for name, var, ok in rows:
+        mark = "KEEP" if ok else "DROP"
+        print(f"{name:<40} {var:12.6f}  {mark:<6}")
+    print("=" * 70)
+    print()
+
+
+def print_correlation_table(raw: dict) -> None:
+    """Table 2 — Correlation: redundant feature pairs (|r| > 0.9)."""
+    pairs = raw["correlated_pairs"]
+    dropped = raw["corr_to_drop"]
+
+    print("=" * 80)
+    print("TABLE 2 — Filter: Correlation Matrix (|r| > 0.9)")
+    if not pairs:
+        print("  No feature pairs exceeded the 0.9 correlation threshold.")
+    else:
+        print(f"{'Feature A':<40} {'Feature B':<40} {'|r|':>6}")
+        print("-" * 80)
+        for a, b, r in pairs:
+            print(f"{a:<40} {b:<40} {r:6.4f}")
+    print()
+    print(f"  Total redundant features dropped: {dropped}")
+    if dropped:
+        print(f"  Dropped: {', '.join(sorted(dropped))}")
+    print("=" * 80)
+    print()
+
+
+def print_anova_table(raw: dict) -> None:
+    """Table 3 — ANOVA F-test: per-feature F-score ranked."""
+    names = FEATURE_COLS
+    scores = raw["anova_scores"]
+    idx = np.argsort(scores)[::-1]
+
+    print("=" * 72)
+    print("TABLE 3 — Filter: ANOVA F-test (SelectKBest, f_classif)")
+    print(f"{'Rank':<6} {'Feature':<40} {'F-score':>12}  {'Top-10?':<8}")
+    print("-" * 72)
+    for rank, i in enumerate(idx, start=1):
+        tag = "YES" if rank <= 10 else "—"
+        print(f"{rank:<6} {names[i]:<40} {scores[i]:12.4f}  {tag:<8}")
+    print("=" * 72)
+    print()
+
+
+def print_rfe_table(raw: dict) -> None:
+    """Table 4 — RFE: elimination rank per feature (1 = selected)."""
+    names = FEATURE_COLS
+    support = raw["rfe_support"]
+    ranking = raw["rfe_ranking"]
+
+    rows = sorted(zip(names, ranking, support), key=lambda x: x[1])
+    print("=" * 62)
+    print("TABLE 4 — Wrapper: Recursive Feature Elimination (RFE)")
+    print("  Model: LogisticRegression | Selected: top 5")
+    print(f"{'Elim. Rank':<12} {'Feature':<40} {'Selected?':<10}")
+    print("-" * 62)
+    for name, rank, sel in rows:
+        mark = "YES" if sel else "—"
+        print(f"{rank:<12} {name:<40} {mark:<10}")
+    print("  (rank 1 = selected, >1 = elimination order)")
+    print("=" * 62)
+    print()
+
+
+def print_dt_table(raw: dict) -> None:
+    """Table 5 — Decision Tree: feature importances ranked."""
+    names = FEATURE_COLS
+    imp = raw["dt_importances"]
+    idx = np.argsort(imp)[::-1]
+    mean = imp.mean()
+
+    print("=" * 70)
+    print("TABLE 5 — Embedded: Decision Tree Importances")
+    print("  max_depth=5 | importance > mean = considered relevant")
+    print(f"{'Rank':<6} {'Feature':<40} {'Importance':>10}  {'>mean?':<6}")
+    print("-" * 70)
+    for rank, i in enumerate(idx, start=1):
+        tag = "YES" if imp[i] > mean else "—"
+        print(f"{rank:<6} {names[i]:<40} {imp[i]:10.4f}  {tag:<6}")
+    print(f"  Mean importance threshold: {mean:.4f}")
+    print("=" * 70)
+    print()
+
+
+def print_rf_table(raw: dict) -> None:
+    """Table 6 — Random Forest: feature importances ranked."""
+    names = FEATURE_COLS
+    imp = raw["rf_importances"]
+    idx = np.argsort(imp)[::-1]
+    mean = imp.mean()
+
+    print("=" * 70)
+    print("TABLE 6 — Embedded: Random Forest Importances")
+    print("  n_estimators=100 | class_weight=balanced")
+    print(f"{'Rank':<6} {'Feature':<40} {'Importance':>10}  {'>mean?':<6}")
+    print("-" * 70)
+    for rank, i in enumerate(idx, start=1):
+        tag = "YES" if imp[i] > mean else "—"
+        print(f"{rank:<6} {names[i]:<40} {imp[i]:10.4f}  {tag:<6}")
+    print(f"  Mean importance threshold: {mean:.4f}")
+    print("=" * 70)
+    print()
 
 
 def get_selected_features(
@@ -251,9 +396,20 @@ def main() -> None:
     Path("data/processed").mkdir(parents=True, exist_ok=True)
     features.to_csv("data/processed/features.csv", index=False)
 
-    comparison = select_features(features)
+    comparison, raw_results = select_features(features)
     comparison.to_csv("data/processed/selection_comparison.csv", index=False)
 
+    print()
+    print_variance_table(raw_results)
+    print_correlation_table(raw_results)
+    print_anova_table(raw_results)
+    print_rfe_table(raw_results)
+    print_dt_table(raw_results)
+    print_rf_table(raw_results)
+
+    print("\n" + "=" * 80)
+    print("COMBINED — Cross-Method Consensus")
+    print("=" * 80)
     print_comparison(comparison)
 
     selected = get_selected_features(comparison, min_consensus=3)
