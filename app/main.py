@@ -96,9 +96,31 @@ def load_model():
     logger.info("Model loaded. Using %d features: %s", len(selected_features), selected_features)
 
 
+@app.get("/")
+async def root():
+    return {
+        "app": "Customer Churn Predictor API",
+        "endpoints": {
+            "/health": "GET — health check",
+            "/predict": "POST — send feature JSON → get churn probability",
+            "/docs": "GET — interactive Swagger UI",
+        },
+        "usage": "POST to /predict with 20 feature values. See /docs for the full schema.",
+    }
+
+
 @app.get("/health")
 async def health():
     return {"status": "ok"}
+
+
+@app.get("/predict")
+async def predict_get():
+    return {
+        "error": "This endpoint requires POST, not GET.",
+        "usage": "Send a POST request with JSON body containing 20 feature values.",
+        "docs": "Visit /docs for the interactive API documentation.",
+    }
 
 
 @app.post("/predict", response_model=ChurnOutput)
