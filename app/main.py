@@ -68,16 +68,23 @@ class ChurnOutput(BaseModel):
     churn_probability: float
 
 
-app = FastAPI(title="Customer Churn Predictor", version="1.0.0")
+class RecommendInput(BaseModel):
+    user_id: int
+    top_n: int = 5
+
+
+app = FastAPI(title="Customer Churn Predictor", version="2.0.0")
 
 model = None
 scaler = None
 selected_features: list[str] = []
+recommender_ready: bool = False
+_feature_df = None
 
 
 @app.on_event("startup")
-def load_model():
-    global model, scaler, selected_features
+def on_startup():
+    global model, scaler, selected_features, recommender_ready, _feature_df
 
     model_path = ROOT / "model.pkl"
     scaler_path = ROOT / "scaler.pkl"
@@ -95,6 +102,17 @@ def load_model():
 
     logger.info("Model loaded. Using %d features: %s", len(selected_features), selected_features)
 
+    try:
+        from app.recommender import load_and_init
+        from app.features import load_raw_data, compute_features
+        raw = load_raw_data()
+        _feature_df = compute_features(raw)
+        load_and_init()
+        recommender_ready = True
+        logger.info("Recommender initialized")
+    except Exception as e:
+        logger.warning("Recommender not available: %s", e)
+
 
 @app.get("/")
 async def root():
@@ -103,6 +121,7 @@ async def root():
         "docs": "/docs",
         "health": "/health",
         "predict": "POST /predict — send 20 feature values, returns churned + churn_probability",
+        "recommend": "POST /recommend — user_id + top_n, returns language/activity suggestions for at-risk users",
     }
 
 
@@ -123,4 +142,32 @@ async def predict(payload: ChurnInput):
         return ChurnOutput(churned=churned, churn_probability=round(prob, 4))
     except Exception as e:
         logger.exception("Prediction failed")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/recommend")
+async def recommend_endpoint(payload: RecommendInput):
+    if not recommender_ready:
+        raise HTTPException(status_code=503, detail="Recommender not initialized.")
+    try:
+        from app.recommender import recommend as get_recommendations
+
+        if payload.user_id < 0 or payload.user_id >= len(_feature_df):
+            raise HTTPException(
+                status_code=404,
+                detail=f"User {payload.user_id} not found (valid: 0-{len(_feature_df)-1})",
+            )
+
+        X = _feature_df[selected_features].iloc[payload.user_id:payload.user_id+1]
+        X_scaled = scaler.transform(X)
+        prob = float(model.predict_proba(X_scaled)[0, 1])
+
+        result = get_recommendations(payload.user_id, top_n=payload.top_n)
+        result["churn_probability"] = round(prob, 4)
+
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Recommendation failed")
         raise HTTPException(status_code=500, detail=str(e))
