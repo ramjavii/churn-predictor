@@ -4,10 +4,10 @@
   "distinct_event_types_count",
   "follower_to_following_ratio",
   "total_community_validation_count",
-  "average_days_between_events",
-  "aggregate_codebase_footprint_kb",
   "days_since_last_api_activity",
-  "repos_per_year",
+  "aggregate_codebase_footprint_kb",
+  "average_days_between_events",
   "total_organization_connections",
-  "has_no_repos"
+  "has_no_repos",
+  "repos_per_year"
 ]
